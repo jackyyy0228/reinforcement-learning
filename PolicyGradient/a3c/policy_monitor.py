@@ -13,14 +13,14 @@ import_path = os.path.abspath(os.path.join(current_path, "../.."))
 if import_path not in sys.path:
   sys.path.append(import_path)
 
-from gym.wrappers import Monitor
-import gym
+#from gym.wrappers import Monitor
+#import gym
 
-from lib.atari.state_processor import StateProcessor
-from lib.atari import helpers as atari_helpers
+#from lib.atari.state_processor import StateProcessor
+#from lib.atari import helpers as atari_helpers
 from estimators import ValueEstimator, PolicyEstimator
 from worker import make_copy_params_op
-
+from tetris import Tetris,Screen
 
 class PolicyMonitor(object):
   """
@@ -34,21 +34,18 @@ class PolicyMonitor(object):
   """
   def __init__(self, env, policy_net, summary_writer, saver=None):
 
-    self.video_dir = os.path.join(summary_writer.get_logdir(), "../videos")
-    self.video_dir = os.path.abspath(self.video_dir)
+    #self.video_dir = os.path.join(summary_writer.get_logdir(), "../videos")
+    #self.video_dir = os.path.abspath(self.video_dir)
 
-    self.env = Monitor(env, directory=self.video_dir, video_callable=lambda x: True, resume=True)
+    #self.env = Monitor(env, directory=self.video_dir, video_callable=lambda x: True, resume=True)
+    self.env = env
     self.global_policy_net = policy_net
     self.summary_writer = summary_writer
     self.saver = saver
-    self.sp = StateProcessor()
+    #self.sp = StateProcessor()
 
     self.checkpoint_path = os.path.abspath(os.path.join(summary_writer.get_logdir(), "../checkpoints/model"))
 
-    try:
-      os.makedirs(self.video_dir)
-    except FileExistsError:
-      pass
 
     # Local policy net
     with tf.variable_scope("policy_eval"):
@@ -60,7 +57,8 @@ class PolicyMonitor(object):
       tf.contrib.slim.get_variables(scope="policy_eval", collection=tf.GraphKeys.TRAINABLE_VARIABLES))
 
   def _policy_net_predict(self, state, sess):
-    feed_dict = { self.policy_net.states: [state] }
+    feed_dict = { self.policy_net.grid_states: [state[0]],
+                 self.policy_net.piece_states: [state[1]]}
     preds = sess.run(self.policy_net.predictions, feed_dict)
     return preds["probs"][0]
 
@@ -71,14 +69,15 @@ class PolicyMonitor(object):
 
       # Run an episode
       done = False
-      state = atari_helpers.atari_make_initial_state(self.sp.process(self.env.reset()))
+      #state = atari_helpers.atari_make_initial_state(self.sp.process(self.env.reset()))
+      state =self.env.reset()
       total_reward = 0.0
       episode_length = 0
       while not done:
         action_probs = self._policy_net_predict(state, sess)
         action = np.random.choice(np.arange(len(action_probs)), p=action_probs)
-        next_state, reward, done, _ = self.env.step(action)
-        next_state = atari_helpers.atari_make_next_state(state, self.sp.process(next_state))
+        next_state, reward, done = self.env.step(action)
+        #next_state = atari_helpers.atari_make_next_state(state, self.sp.process(next_state))
         total_reward += reward
         episode_length += 1
         state = next_state

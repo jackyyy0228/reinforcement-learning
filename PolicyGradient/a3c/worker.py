@@ -1,4 +1,4 @@
-import gym
+#import gym
 import sys
 import os
 import itertools
@@ -14,9 +14,10 @@ if import_path not in sys.path:
   sys.path.append(import_path)
 
 # from lib import plotting
-from lib.atari.state_processor import StateProcessor
-from lib.atari import helpers as atari_helpers
+#from lib.atari.state_processor import StateProcessor
+#from lib.atari import helpers as atari_helpers
 from estimators import ValueEstimator, PolicyEstimator
+from tetris import Tetris,Screen
 
 Transition = collections.namedtuple("Transition", ["state", "action", "reward", "next_state", "done"])
 
@@ -73,7 +74,7 @@ class Worker(object):
     self.global_value_net = value_net
     self.global_counter = global_counter
     self.local_counter = itertools.count()
-    self.sp = StateProcessor()
+    #self.sp = StateProcessor()
     self.summary_writer = summary_writer
     self.env = env
 
@@ -95,7 +96,8 @@ class Worker(object):
   def run(self, sess, coord, t_max):
     with sess.as_default(), sess.graph.as_default():
       # Initial state
-      self.state = atari_helpers.atari_make_initial_state(self.sp.process(self.env.reset()))
+      #self.state = atari_helpers.atari_make_initial_state(self.sp.process(self.env.reset()))
+      self.state = self.env.reset()
       try:
         while not coord.should_stop():
           # Copy Parameters from the global networks
@@ -116,12 +118,14 @@ class Worker(object):
         return
 
   def _policy_net_predict(self, state, sess):
-    feed_dict = { self.policy_net.states: [state] }
+    feed_dict = { self.policy_net.grid_states: [state[0]],
+                 self.policy_net.piece_states: [state[1]]}
     preds = sess.run(self.policy_net.predictions, feed_dict)
     return preds["probs"][0]
 
   def _value_net_predict(self, state, sess):
-    feed_dict = { self.value_net.states: [state] }
+    feed_dict = { self.value_net.grid_states: [state[0]],
+                 self.value_net.piece_states: [state[1]] }
     preds = sess.run(self.value_net.predictions, feed_dict)
     return preds["logits"][0]
 
@@ -131,8 +135,8 @@ class Worker(object):
       # Take a step
       action_probs = self._policy_net_predict(self.state, sess)
       action = np.random.choice(np.arange(len(action_probs)), p=action_probs)
-      next_state, reward, done, _ = self.env.step(action)
-      next_state = atari_helpers.atari_make_next_state(self.state, self.sp.process(next_state))
+      next_state, reward, done = self.env.step(action)
+      #next_state = atari_helpers.atari_make_next_state(self.state, self.sp.process(next_state))
 
       # Store transition
       transitions.append(Transition(
@@ -146,7 +150,8 @@ class Worker(object):
         tf.logging.info("{}: local Step {}, global step {}".format(self.name, local_t, global_t))
 
       if done:
-        self.state = atari_helpers.atari_make_initial_state(self.sp.process(self.env.reset()))
+        #self.state = atari_helpers.atari_make_initial_state(self.sp.process(self.env.reset()))
+        self.state = self.env.reset()
         break
       else:
         self.state = next_state
@@ -167,7 +172,8 @@ class Worker(object):
       reward = self._value_net_predict(transitions[-1].next_state, sess)
 
     # Accumulate minibatch exmaples
-    states = []
+    grid_states = []
+    piece_states = []
     policy_targets = []
     value_targets = []
     actions = []
@@ -176,16 +182,18 @@ class Worker(object):
       reward = transition.reward + self.discount_factor * reward
       policy_target = (reward - self._value_net_predict(transition.state, sess))
       # Accumulate updates
-      states.append(transition.state)
+      grid_states.append(transition.state[0])
+      piece_states.append(transition.state[1])
       actions.append(transition.action)
       policy_targets.append(policy_target)
       value_targets.append(reward)
-
     feed_dict = {
-      self.policy_net.states: np.array(states),
+      self.policy_net.grid_states: np.array(grid_states),
+      self.policy_net.piece_states: np.array(piece_states),
       self.policy_net.targets: policy_targets,
       self.policy_net.actions: actions,
-      self.value_net.states: np.array(states),
+      self.value_net.grid_states: np.array(grid_states),
+      self.value_net.piece_states: np.array(piece_states),
       self.value_net.targets: value_targets,
     }
 

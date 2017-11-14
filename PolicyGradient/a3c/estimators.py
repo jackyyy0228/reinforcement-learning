@@ -1,7 +1,9 @@
 import numpy as np
 import tensorflow as tf
 
-def build_shared_network(X, add_summaries=False):
+from tetris import Tetris,Screen
+
+def build_shared_network(X1,X2, add_summaries=False):
   """
   Builds a 3-layer network conv -> conv -> fc as described
   in the A3C paper. This network is shared by both the policy and value net.
@@ -16,22 +18,39 @@ def build_shared_network(X, add_summaries=False):
 
   # Three convolutional layers
   conv1 = tf.contrib.layers.conv2d(
-    X, 16, 8, 4, activation_fn=tf.nn.relu, scope="conv1")
+    X1, 32, 3, activation_fn=tf.nn.relu, scope="conv1")
   conv2 = tf.contrib.layers.conv2d(
-    conv1, 32, 4, 2, activation_fn=tf.nn.relu, scope="conv2")
+    conv1, 32, 3, activation_fn=tf.nn.relu, scope="conv2")
+  conv3 = tf.contrib.layers.conv2d(
+    conv2, 64, 3, activation_fn=tf.nn.relu, scope="conv3")
+  conv4 = tf.contrib.layers.conv2d(
+    conv3, 64, kernel_size =[14,1], activation_fn=tf.nn.relu, scope="conv4")
+  conv5 = tf.contrib.layers.conv2d(
+    conv4, 128, 3, activation_fn=tf.nn.relu, scope="conv5")
+  conv6 = tf.contrib.layers.conv2d(
+    conv5, 128, 1, activation_fn=tf.nn.relu, scope="conv6")
+  conv7 = tf.contrib.layers.conv2d(
+    conv6, 128, 3, activation_fn=tf.nn.relu, scope="conv7")
 
   # Fully connected layer
   fc1 = tf.contrib.layers.fully_connected(
-    inputs=tf.contrib.layers.flatten(conv2),
-    num_outputs=256,
-    scope="fc1")
+    inputs=tf.concat(axis=1, values=[ tf.contrib.layers.flatten(conv7),X2]),
+    num_outputs=176,scope="fc1")
+  fc2 = tf.contrib.layers.fully_connected(
+    fc1,num_outputs=512,scope="fc2")
 
   if add_summaries:
     tf.contrib.layers.summarize_activation(conv1)
     tf.contrib.layers.summarize_activation(conv2)
+    tf.contrib.layers.summarize_activation(conv3)
+    tf.contrib.layers.summarize_activation(conv4)
+    tf.contrib.layers.summarize_activation(conv5)
+    tf.contrib.layers.summarize_activation(conv6)
+    tf.contrib.layers.summarize_activation(conv7)
     tf.contrib.layers.summarize_activation(fc1)
+    tf.contrib.layers.summarize_activation(fc2)
 
-  return fc1
+  return fc2
 
 class PolicyEstimator():
   """
@@ -51,23 +70,25 @@ class PolicyEstimator():
 
     # Placeholders for our input
     # Our input are 4 RGB frames of shape 160, 160 each
-    self.states = tf.placeholder(shape=[None, 84, 84, 4], dtype=tf.uint8, name="X")
+    self.grid_states = tf.placeholder(shape=[None, 20, 10, 1], dtype=tf.uint8, name="X1")
+    self.piece_states = tf.placeholder(shape=[None,48],dtype=tf.uint8,name="X2") 
     # The TD target value
     self.targets = tf.placeholder(shape=[None], dtype=tf.float32, name="y")
     # Integer id of which action was selected
     self.actions = tf.placeholder(shape=[None], dtype=tf.int32, name="actions")
 
     # Normalize
-    X = tf.to_float(self.states) / 255.0
-    batch_size = tf.shape(self.states)[0]
+    X1 = tf.to_float(self.grid_states) 
+    X2 = tf.to_float(self.piece_states) 
+    batch_size = tf.shape(self.grid_states)[0]
 
     # Graph shared with Value Net
     with tf.variable_scope("shared", reuse=reuse):
-      fc1 = build_shared_network(X, add_summaries=(not reuse))
+      fc2 = build_shared_network(X1,X2, add_summaries=(not reuse))
 
 
     with tf.variable_scope("policy_net"):
-      self.logits = tf.contrib.layers.fully_connected(fc1, num_outputs, activation_fn=None)
+      self.logits = tf.contrib.layers.fully_connected(fc2, num_outputs, activation_fn=None)
       self.probs = tf.nn.softmax(self.logits) + 1e-8
 
       self.predictions = {
@@ -120,19 +141,21 @@ class ValueEstimator():
   def __init__(self, reuse=False, trainable=True):
     # Placeholders for our input
     # Our input are 4 RGB frames of shape 160, 160 each
-    self.states = tf.placeholder(shape=[None, 84, 84, 4], dtype=tf.uint8, name="X")
+    self.grid_states = tf.placeholder(shape=[None, 20, 10, 1], dtype=tf.uint8, name="X1")
+    self.piece_states = tf.placeholder(shape=[None,48],dtype=tf.uint8,name="X2") 
     # The TD target value
     self.targets = tf.placeholder(shape=[None], dtype=tf.float32, name="y")
 
-    X = tf.to_float(self.states) / 255.0
-
+    #Normalize
+    X1 = tf.to_float(self.grid_states) 
+    X2 = tf.to_float(self.piece_states) 
     # Graph shared with Value Net
     with tf.variable_scope("shared", reuse=reuse):
-      fc1 = build_shared_network(X, add_summaries=(not reuse))
+      fc2 = build_shared_network(X1, X2, add_summaries=(not reuse))
 
     with tf.variable_scope("value_net"):
       self.logits = tf.contrib.layers.fully_connected(
-        inputs=fc1,
+        inputs=fc2,
         num_outputs=1,
         activation_fn=None)
       self.logits = tf.squeeze(self.logits, squeeze_dims=[1], name="logits")
