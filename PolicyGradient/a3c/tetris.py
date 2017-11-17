@@ -8,11 +8,13 @@ import move
 from draw import *
 #TODO
 #Tspin check
+GAME_OVER_REWARD = -0.2
 
 class Tetris:
-    def __init__(self,action_type = 'grouped',is_display = False,_screen = None):
+    def __init__(self,action_type = 'grouped',use_fitness = False,is_display = False,_screen = None):
         self.is_display = is_display
         self.action_type = action_type
+        self.use_fitness = use_fitness
         if self.is_display:
             if _screen:
                 self.screen = _screen
@@ -41,6 +43,7 @@ class Tetris:
         self.singleCounter = 0
         self.positions=[] #block position, used for drawing screen
         self.totalSent = 0
+        self.prev_fitness = 0
         if self.is_display:
             self.display()
         return self.get_state()
@@ -48,7 +51,7 @@ class Tetris:
         if self.check_collide(self.px,self.py):
             self.done = True
         if self.done:
-            return self.get_state(),-10,self.done
+            return self.get_state(),GAME_OVER_REWARD,self.done
         if self.action_type == 'grouped':
             return self.groupedAction(action)
         elif self.action_type == 'single': #haven't finished
@@ -167,7 +170,7 @@ class Tetris:
     def check_end(self):
         if self.check_collide(self.px,self.py):
             self.done = True
-            return -10
+            return GAME_OVER_REWARD
         for x in range(4):
             for y in range(4):
                 if self.block[x][y] > 0:
@@ -198,6 +201,7 @@ class Tetris:
                 else:
                     sent += 1
                 self.prev_clear_type = 'tetris'
+            sent += 1
         if total_clear > 0:
             self.combo += 1
         else:
@@ -210,8 +214,16 @@ class Tetris:
                 if self.block[x][y] > 0:
                     if self.py+y < 0:
                         self.done = True
-                        sent = -10
+                        return GAME_OVER_REWARD
+        if self.use_fitness :
+            fitness = self.cal_fitness(total_clear)
+            self.prev
         return sent
+    def cal_fitness(self,lines):
+        height = cal_height(self.grid)
+        bumpiness = cal_bumpiness(self.grid)
+        holes = cal_holes(self.grid)
+        return -0.51 * height + 0.76 * lines - 0.36 * holes - 0.18 * bumpiness 
     def getPositions(self):  
         self.positions=[]
         for x in range(4):
@@ -260,6 +272,43 @@ class Tetris:
                 print(temp_grid[x][y],end=' ')
             print()
         print('#'*20)
+def cal_holes(grid):
+    num_holes = 0
+    for x in range(10):
+        for y in range(1,20):
+            if grid[x][y] == 0:
+                check = True
+                for (x2,y2) in [(-1,0),(0,-1),(1,0),(0,1)]:
+                    if 0 <= x + x2 < 10 and 0 <= y + y2 <20 and grid[x+x2][y+y2] == 0 :
+                        check = False
+                if check:
+                    num_holes += 1
+    return num_holes
+def cal_height(grid):
+    sum_height = 0
+    for x in range(10):
+        height = 0
+        for y in range(20):
+            if grid[x][y] > 0:
+                height = 20 - y
+                break
+        sum_height += height
+    return sum_height
+def cal_bumpiness(grid):
+    height_list = []
+    for x in range(10):
+        height = 0
+        for y in range(20):
+            if grid[x][y] > 0:
+                height = 20 - y
+                break
+        height_list.append(height)
+    bumpiness = 0
+    for x in range(len(height_list)-1):
+        bumpiness += abs(height_list[x] - height_list[x+1])
+    return bumpiness
+
+
 class Screen:
     def __init__(self):
         pygame.init()
@@ -390,8 +439,8 @@ class Screen:
 
 
 if __name__ == '__main__':
-    test = 'grouped'
-    T = Tetris(action_type = test,is_display = True)
+    test = 'single'
+    T = Tetris(action_type = test,use_fitness = True,is_display = True)
     state = T.reset()
     for x in state:
         print(x)
@@ -403,8 +452,9 @@ if __name__ == '__main__':
             actionID = input('key : ')
             if actionID not in ['0','1','2','3','4','5']:
                 continue
-            _,_,done = T.step(int(actionID))
-            T.draw()
+            _,reward,done = T.step(int(actionID))
+            #T.draw()
+            print("Reward: " + str(reward))
             if done:
                 print('Game Over.')
     else:

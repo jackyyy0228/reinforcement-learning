@@ -23,19 +23,11 @@ def build_shared_network(X1,X2, add_summaries=False):
     conv1, 32, 3, activation_fn=tf.nn.relu, scope="conv2")
   conv3 = tf.contrib.layers.conv2d(
     conv2, 64, 3, activation_fn=tf.nn.relu, scope="conv3")
-  conv4 = tf.contrib.layers.conv2d(
-    conv3, 64, kernel_size =[14,1], activation_fn=tf.nn.relu, scope="conv4")
-  conv5 = tf.contrib.layers.conv2d(
-    conv4, 128, 3, activation_fn=tf.nn.relu, scope="conv5")
-  conv6 = tf.contrib.layers.conv2d(
-    conv5, 128, 1, activation_fn=tf.nn.relu, scope="conv6")
-  conv7 = tf.contrib.layers.conv2d(
-    conv6, 128, 3, activation_fn=tf.nn.relu, scope="conv7")
 
   # Fully connected layer
   fc1 = tf.contrib.layers.fully_connected(
-    inputs=tf.concat(axis=1, values=[ tf.contrib.layers.flatten(conv7),X2]),
-    num_outputs=176,scope="fc1")
+    inputs=tf.concat(axis=1, values=[ tf.contrib.layers.flatten(conv3),X2]),
+    num_outputs=256,scope="fc1")
   fc2 = tf.contrib.layers.fully_connected(
     fc1,num_outputs=512,scope="fc2")
 
@@ -43,10 +35,6 @@ def build_shared_network(X1,X2, add_summaries=False):
     tf.contrib.layers.summarize_activation(conv1)
     tf.contrib.layers.summarize_activation(conv2)
     tf.contrib.layers.summarize_activation(conv3)
-    tf.contrib.layers.summarize_activation(conv4)
-    tf.contrib.layers.summarize_activation(conv5)
-    tf.contrib.layers.summarize_activation(conv6)
-    tf.contrib.layers.summarize_activation(conv7)
     tf.contrib.layers.summarize_activation(fc1)
     tf.contrib.layers.summarize_activation(fc2)
 
